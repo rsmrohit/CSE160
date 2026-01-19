@@ -177,90 +177,62 @@ function renderAllShapes() {
 function drawMyPicture() {
     shapesList = [];
 
-    // --- Letter R (Left side) ---
-    // Vertical bar (made of 2 triangles)
-    shapesList.push(new Triangle(-0.7, 0.2, [0.8, 0.2, 0.2, 1.0], 30));
-    shapesList.push(new Triangle(-0.7, -0.2, [0.8, 0.2, 0.2, 1.0], 30));
+    // --- Trees ---
+    // Tree 1 (Left)
+    shapesList.push(new Triangle(-0.7, -0.2, [0.4, 0.2, 0.1, 1.0], 15)); // Trunk
+    shapesList.push(new Triangle(-0.7, 0.0, [0.1, 0.6, 0.1, 1.0], 40));  // Leaves Bottom
+    shapesList.push(new Triangle(-0.7, 0.2, [0.1, 0.6, 0.1, 1.0], 35));  // Leaves Mid
+    shapesList.push(new Triangle(-0.7, 0.4, [0.1, 0.6, 0.1, 1.0], 30));  // Leaves Top
 
-    // Top Loop (Play button pointing right)
-    // Using a triangle pointing right requires manual vertex manipulation or careful placement
-    // Since Triangle class takes x,y and draws isosceles pointing UP, we might need rotated ones if supported, 
-    // but the class is simple. The prompt says "different orientations". 
-    // The current Triangle class draws: (x, y+s), (x-s, y-s), (x+s, y-s). It's fixed orientation.
-    // However, the user said "The shapes are actual different triangles with different orientations".
-    // This implies I should perhaps modify Triangle to support rotation OR just use the existing one creatively?
-    // User constraint: "In Asgn1... simple...". "Shapes are actual different triangles with different orientations"
-    // implies I should probably just place them carefully or if I can't rotate, maybe they assume I can?
-    // Looking at main.js, Triangle class is fixed orientation. 
-    // Wait, the prompt implies "orientation" physically. 
-    // Let's look at the Triangle class again in Step 16. It's fixed.
-    // Maybe I should add a rotation parameter? Or just simulate it by placing them?
-    // "not just one triangle repeated" -> maybe different sizes/aspect ratios?
-    // Actually, I can just stack them to look like shape.
+    // Tree 2 (Right)
+    shapesList.push(new Triangle(0.7, -0.2, [0.4, 0.2, 0.1, 1.0], 15)); // Trunk
+    shapesList.push(new Triangle(0.7, 0.0, [0.1, 0.6, 0.1, 1.0], 40));  // Leaves Bottom
+    shapesList.push(new Triangle(0.7, 0.2, [0.1, 0.6, 0.1, 1.0], 35));  // Leaves Mid
+    shapesList.push(new Triangle(0.7, 0.4, [0.1, 0.6, 0.1, 1.0], 30));  // Leaves Top
 
-    // Changing approach: I will modify Triangle class to accept an 'angle' or similar if I could, 
-    // but the prompt is strictly asking to CHANGE THE PICTURE.
-    // "Letter R... Has a vertical left bar... Top has a triangular shape... Diagonal leg"
+    // --- Initials "RSM" with Circles (Pen Style) ---
+    let penColor = [1.0, 0.0, 1.0, 1.0]; // Magenta/Pink Pen
+    let penSize = 5;
+    let segments = 8;
 
-    // Re-reading User Request carefully: "The shapes are actual different triangles with different orientations".
-    // Does the user *think* I have that capability? Or do they want me to add it?
-    // "In Asgn1 I want to add a little bit of uniqueness... Ill have one button for left right..."
-    // That was the previous request. Now "I want to change the hardcoded image... heres how I would describe it".
+    // Helper to draw a line of circles
+    function drawLine(x1, y1, x2, y2, steps) {
+        for (let i = 0; i <= steps; i++) {
+            let t = i / steps;
+            let x = x1 + (x2 - x1) * t;
+            let y = y1 + (y2 - y1) * t;
+            shapesList.push(new Circle(x, y, penColor, penSize, segments));
+        }
+    }
 
-    // I will try to build it using just the standard Up-Pointing Triangle for now but vary position/size/color 
-    // to simulate standard shapes, OR I can manually construct "Rotated Triangles" by just adding a new class or modifying existing?
-    // No, I'll stick to `Triangle` class. It simplifies things. I can make a "Right pointing" triangle 
-    // by using the generic Triangle but scaling it? No, `size` is a float.
+    // Helper to draw a curve (quadratic bezier)
+    function drawCurve(x1, y1, cx, cy, x2, y2, steps) {
+        for (let i = 0; i <= steps; i++) {
+            let t = i / steps;
+            let invT = 1 - t;
+            let x = invT * invT * x1 + 2 * invT * t * cx + t * t * x2;
+            let y = invT * invT * y1 + 2 * invT * t * cy + t * t * y2;
+            shapesList.push(new Circle(x, y, penColor, penSize, segments));
+        }
+    }
 
-    // Let's just create the visual effect using the fixed triangles.
-    // If the user *really* implies rotation in the code, they would have asked for a class update. 
-    // They are describing the *visual output*.
+    // Letter R (Center: -0.3 to -0.1)
+    drawLine(-0.4, -0.2, -0.4, 0.2, 10); // Vertical bar
+    drawCurve(-0.4, 0.2, -0.2, 0.25, -0.4, 0.0, 10); // Loop
+    drawLine(-0.4, 0.0, -0.25, -0.2, 8); // Leg
 
-    // Letter R
-    // Vertical Bar
-    shapesList.push(new Triangle(-0.8, 0.4, [0.9, 0.0, 0.0, 1.0], 20));
-    shapesList.push(new Triangle(-0.8, 0.2, [0.8, 0.0, 0.0, 1.0], 20));
-    shapesList.push(new Triangle(-0.8, 0.0, [0.7, 0.0, 0.0, 1.0], 20));
-    shapesList.push(new Triangle(-0.8, -0.2, [0.6, 0.0, 0.0, 1.0], 20));
+    // Letter S (Center: -0.1 to 0.1)
+    // S curve: Top curve Left->Right, then diagonal down-left, then bottom curve Left->Right
+    // Or simplified Bezier S: Top half, Bottom half
+    drawCurve(0.05, 0.2, 0.05, 0.3, -0.05, 0.2, 8); // Top hook
+    drawCurve(-0.05, 0.2, -0.15, 0.1, 0.0, 0.0, 8);  // Top curve to center
+    drawCurve(0.0, 0.0, 0.15, -0.1, -0.05, -0.2, 8); // Bottom curve
 
-    // Top "Play Button" (Round part of R)
-    shapesList.push(new Triangle(-0.6, 0.3, [1.0, 0.2, 0.2, 1.0], 25));
-
-    // Diagonal Leg
-    shapesList.push(new Triangle(-0.6, -0.2, [0.9, 0.0, 0.0, 1.0], 20));
-    shapesList.push(new Triangle(-0.5, -0.4, [0.9, 0.0, 0.0, 1.0], 20));
-
-
-    // --- Letter S (Middle) ---
-    // "Multiple diagonal/slanted triangular pieces... at angles to create S curve"
-    shapesList.push(new Triangle(0.1, 0.5, [0.0, 1.0, 0.0, 1.0], 15)); // Top Right
-    shapesList.push(new Triangle(0.0, 0.5, [0.0, 0.9, 0.0, 1.0], 15)); // Top Left
-    shapesList.push(new Triangle(-0.1, 0.4, [0.0, 0.8, 0.0, 1.0], 15)); // Top curve down
-
-    shapesList.push(new Triangle(0.0, 0.2, [0.0, 0.7, 0.0, 1.0], 15)); // Middle
-
-    shapesList.push(new Triangle(0.1, 0.0, [0.0, 0.6, 0.0, 1.0], 15)); // Bottom curve right
-    shapesList.push(new Triangle(0.0, -0.2, [0.0, 0.5, 0.0, 1.0], 15)); // Bottom
-    shapesList.push(new Triangle(-0.1, -0.2, [0.0, 0.4, 0.0, 1.0], 15)); // Bottom Left end
-
-
-    // --- Letter M (Right side) ---
-    // "Two large upward-pointing triangles... hollow... made of smaller triangles"
-
-    // Left peak
-    shapesList.push(new Triangle(0.4, 0.0, [0.2, 0.2, 1.0, 1.0], 10)); // Left base
-    shapesList.push(new Triangle(0.45, 0.2, [0.3, 0.3, 1.0, 1.0], 10)); // Left mid
-    shapesList.push(new Triangle(0.5, 0.4, [0.4, 0.4, 1.0, 1.0], 10)); // Left top
-    shapesList.push(new Triangle(0.55, 0.2, [0.3, 0.3, 1.0, 1.0], 10)); // Inner left down
-
-    // Right peak
-    shapesList.push(new Triangle(0.65, 0.2, [0.3, 0.3, 1.0, 1.0], 10)); // Inner right up
-    shapesList.push(new Triangle(0.7, 0.4, [0.4, 0.4, 1.0, 1.0], 10)); // Right top
-    shapesList.push(new Triangle(0.75, 0.2, [0.3, 0.3, 1.0, 1.0], 10)); // Right mid
-    shapesList.push(new Triangle(0.8, 0.0, [0.2, 0.2, 1.0, 1.0], 10)); // Right base
-
-    // Fill the M structure a bit more distinct
-    shapesList.push(new Triangle(0.6, 0.0, [0.5, 0.5, 1.0, 1.0], 10)); // Center bottom point
+    // Letter M (Center: 0.2 to 0.4)
+    drawLine(0.2, -0.2, 0.2, 0.2, 10); // Left Up
+    drawLine(0.2, 0.2, 0.3, 0.0, 8); // Down Middle
+    drawLine(0.3, 0.0, 0.4, 0.2, 8); // Up Middle
+    drawLine(0.4, 0.2, 0.4, -0.2, 10); // Right Down
 
     renderAllShapes();
 }

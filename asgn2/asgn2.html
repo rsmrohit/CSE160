@@ -1,0 +1,125 @@
+<!--
+Rohit Mamidipaka
+ID: 2009124
+rmamidip@ucsc.edu
+asg1.js
+
+Notes to the grader:
+-->
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Rohit Mamidipaka CSE160 Assignment 2</title>
+    </head>
+
+    <body onload="main()">
+        Rohit Mamidipaka
+        <br />
+        rmamidip@ucsc.edu
+        <br />
+
+        <canvas id="webgl" width="400" height="400">
+            Please use a browser that supports "canvas"
+        </canvas>
+
+        <div id="performance-display"></div>
+        <br /><br />
+        <!-- <button id="clear-canvas">Clear Canvas</button> -->
+        <!-- <button id="generate-picture">Generate Picture</button> -->
+        <br />
+
+        Upper Leg:
+        <input
+            type="range"
+            min="0"
+            max="360"
+            value="0"
+            class="slider"
+            id="anon-slider"
+        />
+
+        Lower Leg:
+        <input
+            type="range"
+            min="0"
+            max="360"
+            value="0"
+            class="slider"
+            id="slider-5"
+        />
+
+        <br />
+
+        X:
+        <input
+            type="range"
+            min="0"
+            max="360"
+            value="0"
+            class="slider"
+            id="angle-slider"
+        />
+
+        Y:
+        <input
+            type="range"
+            min="0"
+            max="360"
+            value="0"
+            class="slider"
+            id="slider-2"
+        />
+
+        Z:
+        <input
+            type="range"
+            min="0"
+            max="360"
+            value="0"
+            class="slider"
+            id="slider-3"
+        />
+
+        Zoom:
+        <input
+            type="range"
+            min="1"
+            max="100"
+            value="50"
+            class="slider"
+            id="slider-4"
+        />
+
+        <br />
+
+        <!-- add a checkbox to remove a component -->
+        <br />
+        Reveal second hump:
+        <input type="checkbox" id="remove-hump" />
+
+        <!-- Animation On and off buttons -->
+        <br />
+        Animation1:
+        <button id="start-animation1">ON</button>
+        <button id="stop-animation1">OFF</button>
+
+        <br />
+        Animation2:
+        <button id="start-animation2">ON</button>
+        <button id="stop-animation2">OFF</button>
+        <br />
+    </body>
+
+    <script src="./lib/webgl-utils.js"></script>
+    <script src="./lib/webgl-debug.js"></script>
+    <script src="./lib/cuon-utils.js"></script>
+    <script src="./lib/cuon-matrix-cse160.js"></script>
+    <!-- <script src="./lib/point.js"></script> -->
+    <script src="./lib/triangle.js"></script>
+    <script src="./lib/circle.js"></script>
+    <script src="./lib/cube.js"></script>
+    <script src="./lib/sphere.js"></script>
+    <script src="asgn2.js"></script>
+</html>

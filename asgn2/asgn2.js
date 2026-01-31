@@ -184,6 +184,13 @@ function addActionListeners() {
     g_selectedZoom = this.value;
   });
 
+  document.getElementById('reset-neck').addEventListener('click', function () {
+    for (var i = 0; i < neck_cubes_count; i++) {
+      g_neckAngles[i] = [0, 0, 0];
+    }
+    // renderAllShapes();
+  });
+
   // Mouse Control Events
   canvas.onmousedown = function (ev) { click(ev); };
   canvas.onmousemove = function (ev) { move(ev); };
@@ -198,6 +205,30 @@ let g_lastMouseY = -1;
 function click(ev) {
   let x = ev.clientX;
   let y = ev.clientY;
+
+  // Check for Shift+Click
+  if (ev.shiftKey) {
+    // Face camera logic
+    let targetNeckYaw = -g_selectedAngle;
+    let targetNeckRoll = -g_selectedAngle3; // Counteract X-axis rotation (Slider 3)
+    let targetNeckPitch = -g_selectedAngle2; // Counteract Z-axis rotation (Slider 2)
+
+    let anglePerSegmentYaw = targetNeckYaw / neck_cubes_count;
+    let anglePerSegmentRoll = targetNeckRoll / neck_cubes_count;
+    let anglePerSegmentPitch = targetNeckPitch / neck_cubes_count;
+
+    // Start Animation
+    g_pokeAnimation = true;
+    g_pokeStartTime = g_seconds;
+
+    // Capture start from current state (segment 0)
+    g_pokeStartAngle = [g_neckAngles[0][0], g_neckAngles[0][1], g_neckAngles[0][2]];
+    g_pokeTargetAngle = [anglePerSegmentYaw, anglePerSegmentRoll, anglePerSegmentPitch];
+
+    // g_animation2 = false; 
+
+    return; // Don't start drag
+  }
 
   // Start dragging
   g_mouseDown = true;
@@ -241,11 +272,29 @@ function move(ev) {
 var g_startTime = performance.now() / 1000.0;
 var g_seconds = performance.now() / 1000.0 - g_startTime;
 
+// FPS variables
+let g_lastFrameTime = performance.now();
+let g_fps = 0;
+
 function tick() {
   g_seconds = performance.now() / 1000.0 - g_startTime;
   updateAnimationAngles();
   renderAllShapes();
+  updateFPS(); // Calculate and display FPS
   requestAnimationFrame(tick);
+}
+
+function updateFPS() {
+  let now = performance.now();
+  let duration = now - g_lastFrameTime;
+  g_lastFrameTime = now;
+
+  if (duration > 0) {
+    let fps = 1000.0 / duration;
+    // Smooth output a bit or just display raw
+    g_fps = fps;
+    sendTextToHTML("FPS: " + Math.floor(g_fps), "performance-display");
+  }
 }
 
 function updateAnimationAngles() {
@@ -348,7 +397,37 @@ function updateAnimationAngles() {
 
     }
   }
+
+  // Poke Animation (Shift+Click)
+  if (g_pokeAnimation) {
+    let t = (g_seconds - g_pokeStartTime) / g_pokeDuration;
+    if (t > 1.0) t = 1.0;
+
+    // Ease out cubic
+    let easeT = 1 - Math.pow(1 - t, 3);
+
+    let currentYaw = (1 - easeT) * g_pokeStartAngle[0] + easeT * g_pokeTargetAngle[0];
+    let currentRoll = (1 - easeT) * g_pokeStartAngle[1] + easeT * g_pokeTargetAngle[1];
+    let currentPitch = (1 - easeT) * g_pokeStartAngle[2] + easeT * g_pokeTargetAngle[2];
+
+    for (let i = 0; i < neck_cubes_count; i++) {
+      g_neckAngles[i][0] = currentYaw;
+      g_neckAngles[i][1] = currentRoll;
+      g_neckAngles[i][2] = currentPitch;
+    }
+
+    if (t >= 1.0) {
+      g_pokeAnimation = false;
+    }
+  }
 }
+
+// Poke Animation Globals
+let g_pokeAnimation = false;
+let g_pokeStartTime = 0;
+let g_pokeDuration = 1.0;
+let g_pokeTargetAngle = [0, 0, 0]; // Yaw, Roll, Pitch
+let g_pokeStartAngle = [0, 0, 0]; // Yaw, Roll, Pitch (of first segment)
 
 function renderAllShapes() {
   var start_time = performance.now();

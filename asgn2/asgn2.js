@@ -59,6 +59,29 @@ for (var i = 0; i < neck_cubes_count; i++) {
 }
 let show_hump = false;
 
+// === NECK WOBBLE GLOBALS ===
+let g_lastSelectedAngle  = 0.0;
+let g_lastSelectedAngle2 = 0.0;
+
+const WOBBLE_IDLE     = 0;
+const WOBBLE_DRAGGING = 1;
+const WOBBLE_PLAYING  = 2;
+
+// Yaw wobble (from angle-slider / horizontal mouse drag)
+let g_wobbleYawState     = WOBBLE_IDLE;
+let g_wobbleYawStartTime = 0;
+let g_wobbleYawAmplitude = 0;   // accumulated while dragging, locked when wobble fires
+
+// Pitch wobble (from slider-2 / vertical mouse drag)
+let g_wobblePitchState     = WOBBLE_IDLE;
+let g_wobblePitchStartTime = 0;
+let g_wobblePitchAmplitude = 0;
+
+// Tuning knobs
+const WOBBLE_FREQUENCY   = 7.0;   // Hz — higher = snappier
+const WOBBLE_DECAY       = 3.0;   // higher = dies out faster
+const WOBBLE_SENSITIVITY = 0.75;  // velocity -> amplitude scaling
+const WOBBLE_PHASE_LAG   = 0.04;  // seconds delay per neck segment
 function initBuffers() {
   g_vertexBuffer = gl.createBuffer();
   if (!g_vertexBuffer) {
@@ -299,6 +322,74 @@ function updateFPS() {
 
 function updateAnimationAngles() {
 
+// --- Neck wobble: velocity state machine ---
+  {
+    let deltaYaw = g_selectedAngle - g_lastSelectedAngle;
+    if (deltaYaw >  180) deltaYaw -= 360;  // wrap
+    if (deltaYaw < -180) deltaYaw += 360;
+    let moving = Math.abs(deltaYaw) > 0.5;
+
+    switch (g_wobbleYawState) {
+      case WOBBLE_IDLE:
+        if (moving) {
+          g_wobbleYawState = WOBBLE_DRAGGING;
+          g_wobbleYawAmplitude = deltaYaw * WOBBLE_SENSITIVITY;
+        }
+        break;
+      case WOBBLE_DRAGGING:
+        if (moving) {
+          g_wobbleYawAmplitude += deltaYaw * WOBBLE_SENSITIVITY; // keep accumulating
+        } else {
+          // just stopped — fire the wobble
+          g_wobbleYawState     = WOBBLE_PLAYING;
+          g_wobbleYawStartTime = g_seconds;
+          // g_wobbleYawAmplitude is already set, leave it
+        }
+        break;
+      case WOBBLE_PLAYING:
+        if (moving) {
+          // user grabbed slider again mid-wobble, go back to dragging
+          g_wobbleYawState     = WOBBLE_DRAGGING;
+          g_wobbleYawAmplitude = deltaYaw * WOBBLE_SENSITIVITY; // reset accumulator
+        }
+        // otherwise let it keep playing, the apply block will set it to IDLE when done
+        break;
+    }
+    g_lastSelectedAngle = g_selectedAngle;
+  }
+
+  // Exact same thing for pitch
+  {
+    let deltaPitch = g_selectedAngle2 - g_lastSelectedAngle2;
+    if (deltaPitch >  180) deltaPitch -= 360;
+    if (deltaPitch < -180) deltaPitch += 360;
+    let moving = Math.abs(deltaPitch) > 0.5;
+
+    switch (g_wobblePitchState) {
+      case WOBBLE_IDLE:
+        if (moving) {
+          g_wobblePitchState = WOBBLE_DRAGGING;
+          g_wobblePitchAmplitude = deltaPitch * WOBBLE_SENSITIVITY;
+        }
+        break;
+      case WOBBLE_DRAGGING:
+        if (moving) {
+          g_wobblePitchAmplitude += deltaPitch * WOBBLE_SENSITIVITY;
+        } else {
+          g_wobblePitchState     = WOBBLE_PLAYING;
+          g_wobblePitchStartTime = g_seconds;
+        }
+        break;
+      case WOBBLE_PLAYING:
+        if (moving) {
+          g_wobblePitchState     = WOBBLE_DRAGGING;
+          g_wobblePitchAmplitude = deltaPitch * WOBBLE_SENSITIVITY;
+        }
+        break;
+    }
+    g_lastSelectedAngle2 = g_selectedAngle2;
+  }
+
   // First animation: if animate is true
   // We animate legs, using animate legs array
   // upper legs move in sinusoidal from -45 to 45 degrees
@@ -322,6 +413,46 @@ function updateAnimationAngles() {
     for (let i = 0; i < neck_cubes_count; i++) {
       g_neckAngles[i][1] = neckAngle;
     }
+
+// --- Neck wobble: apply damped oscillation per segment ---
+  if (!g_animation && !g_animation2 && !g_pokeAnimation) {
+
+    // Reset neck angles to base (0) FIRST, then add wobble on top.
+    // This is the key fix — we set, not accumulate.
+    for (let i = 0; i < neck_cubes_count; i++) {
+      g_neckAngles[i][0] = 0;  // yaw base
+      g_neckAngles[i][2] = 0;  // pitch base
+    }
+
+    if (g_wobbleYawActive) {
+      let baseT = g_seconds - g_wobbleYawStartTime;
+      let stillAlive = false;
+      for (let i = 0; i < neck_cubes_count; i++) {
+        let t = baseT - (i * WOBBLE_PHASE_LAG);
+        if (t < 0) { stillAlive = true; continue; }
+        let envelope = Math.exp(-WOBBLE_DECAY * t);
+        if (envelope < 0.001) continue;
+        stillAlive = true;
+        // SET, not +=. Fresh computation every frame.
+        g_neckAngles[i][0] = g_wobbleYawAmplitude * envelope * Math.sin(WOBBLE_FREQUENCY * 2 * Math.PI * t);
+      }
+      if (!stillAlive) g_wobbleYawActive = false;
+    }
+
+    if (g_wobblePitchActive) {
+      let baseT = g_seconds - g_wobblePitchStartTime;
+      let stillAlive = false;
+      for (let i = 0; i < neck_cubes_count; i++) {
+        let t = baseT - (i * WOBBLE_PHASE_LAG);
+        if (t < 0) { stillAlive = true; continue; }
+        let envelope = Math.exp(-WOBBLE_DECAY * t);
+        if (envelope < 0.001) continue;
+        stillAlive = true;
+        g_neckAngles[i][2] = g_wobblePitchAmplitude * envelope * Math.sin(WOBBLE_FREQUENCY * 2 * Math.PI * t);
+      }
+      if (!stillAlive) g_wobblePitchActive = false;
+    }
+  }
   }
 
   // second animateion, temporarily use g_animation2 variable
@@ -418,6 +549,44 @@ function updateAnimationAngles() {
 
     if (t >= 1.0) {
       g_pokeAnimation = false;
+    }
+  }
+
+  // --- Neck wobble: apply ---
+  if (!g_animation && !g_animation2 && !g_pokeAnimation) {
+    // Reset to base each frame first
+    for (let i = 0; i < neck_cubes_count; i++) {
+      g_neckAngles[i][0] = 0;
+      g_neckAngles[i][2] = 0;
+    }
+
+    if (g_wobbleYawState === WOBBLE_PLAYING) {
+      let baseT   = g_seconds - g_wobbleYawStartTime;
+      let anyAlive = false;
+      for (let i = 0; i < neck_cubes_count; i++) {
+        let t = baseT - (i * WOBBLE_PHASE_LAG);
+        if (t < 0) { anyAlive = true; continue; }
+        let env = Math.exp(-WOBBLE_DECAY * t);
+        if (env < 0.001) continue;
+        anyAlive = true;
+        g_neckAngles[i][0] = g_wobbleYawAmplitude * env * Math.sin(WOBBLE_FREQUENCY * 2 * Math.PI * t);
+        g_neckAngles[i][2] = g_wobbleYawAmplitude * env * Math.sin(WOBBLE_FREQUENCY * 2 * Math.PI * t);
+      }
+      if (!anyAlive) g_wobbleYawState = WOBBLE_IDLE;
+    }
+
+    if (g_wobblePitchState === WOBBLE_PLAYING) {
+      let baseT   = g_seconds - g_wobblePitchStartTime;
+      let anyAlive = false;
+      for (let i = 0; i < neck_cubes_count; i++) {
+        let t = baseT - (i * WOBBLE_PHASE_LAG);
+        if (t < 0) { anyAlive = true; continue; }
+        let env = Math.exp(-WOBBLE_DECAY * t);
+        if (env < 0.001) continue;
+        anyAlive = true;
+        g_neckAngles[i][2] = g_wobblePitchAmplitude * env * Math.sin(WOBBLE_FREQUENCY * 2 * Math.PI * t);
+      }
+      if (!anyAlive) g_wobblePitchState = WOBBLE_IDLE;
     }
   }
 }

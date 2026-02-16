@@ -1,0 +1,159 @@
+<!--
+Rohit Mamidipaka
+ID: 2009124
+rmamidip@ucsc.edu
+asgn3.html
+-->
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Rohit Mamidipaka CSE160 Assignment 3</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+            }
+
+            canvas {
+                border: 1px solid #ccc;
+                display: block;
+                margin: 10px 0;
+            }
+
+            .controls {
+                margin: 10px 0;
+            }
+
+            .control-group {
+                margin: 5px 0;
+            }
+
+            label {
+                display: inline-block;
+                width: 120px;
+            }
+        </style>
+    </head>
+
+    <body onload="main()">
+        <h2>Rohit Mamidipaka - CSE160 Assignment 3</h2>
+        <p>rmamidip@ucsc.edu</p>
+
+        <canvas id="webgl" width="640" height="480">
+            Please use a browser that supports "canvas"
+        </canvas>
+
+        <div id="performance-display">FPS: 0</div>
+
+        <div class="controls">
+            <h3>Camera Controls</h3>
+
+            <div class="control-group">
+                <label>Camera X:</label>
+                <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    value="0"
+                    step="0.1"
+                    class="slider"
+                    id="camera-x"
+                />
+                <span id="camera-x-value">0</span>
+            </div>
+
+            <div class="control-group">
+                <label>Camera Y:</label>
+                <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    value="2"
+                    step="0.1"
+                    class="slider"
+                    id="camera-y"
+                />
+                <span id="camera-y-value">2</span>
+            </div>
+
+            <div class="control-group">
+                <label>Camera Z:</label>
+                <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    value="5"
+                    step="0.1"
+                    class="slider"
+                    id="camera-z"
+                />
+                <span id="camera-z-value">5</span>
+            </div>
+
+            <div class="control-group">
+                <label>Camera Pan:</label>
+                <input
+                    type="range"
+                    min="-180"
+                    max="180"
+                    value="0"
+                    step="1"
+                    class="slider"
+                    id="camera-pan"
+                />
+                <span id="camera-pan-value">0</span>
+            </div>
+
+            <div class="control-group">
+                <label>Camera Tilt:</label>
+                <input
+                    type="range"
+                    min="-90"
+                    max="90"
+                    value="0"
+                    step="1"
+                    class="slider"
+                    id="camera-tilt"
+                />
+                <span id="camera-tilt-value">0</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h3>Debug Controls</h3>
+            <button id="toggle-texture">Toggle Texture</button>
+            <button id="reset-camera">Reset Camera</button>
+            <label style="margin-left: 10px; width: auto;">
+                <input type="checkbox" id="mouse-look-toggle" />
+                Enable Mouse Look
+            </label>
+            <p><strong>Block Controls:</strong> Press <code>C</code> to add block, <code>X</code> to remove block.</p>
+        </div>
+
+        <!-- WebGL utility libraries -->
+        <script src="./lib/webgl-utils.js"></script>
+        <script src="./lib/webgl-debug.js"></script>
+        <script src="./lib/cuon-utils.js"></script>
+        <script src="./lib/cuon-matrix-cse160.js"></script>
+
+        <!-- Core modules -->
+        <script src="./camera.js"></script>
+        <script src="./player.js"></script>
+        <script src="./texture.js"></script>
+
+        <!-- Geometry classes -->
+        <script src="./resources/human.js"></script>
+        <script src="./resources/human-basic.js"></script>
+        <script src="./resources/camel.js"></script>
+        <script src="./cube.js"></script>
+        <script src="./texturedCross.js"></script>
+
+        <!-- World and rendering -->
+        <script src="./world.js"></script>
+
+        <!-- Main application -->
+        <script src="./main.js"></script>
+    </body>
+</html>

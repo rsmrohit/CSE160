@@ -7,7 +7,11 @@ class Human {
     this.rotation = [0, 0, 0];
     this.modMat = new Matrix4().setIdentity();
 
-    this.color = [0.95, 0.8, 0.7, 1.0];
+    this.color = [0.73, 0.73, 0.73, 1.0];
+    this.useLighting = true;
+    this.lightDirection = [0.6, 1.0, 0.4];
+    this.lightColor = [1.0, 1.0, 1.0];
+    this.ambientColor = [0.2, 0.2, 0.2];
     this.modelMatrix = new Matrix4();
 
     if (!Human._meshPromise) {
@@ -36,9 +40,11 @@ class Human {
   static _parseObj(objText) {
     const positions = [[0, 0, 0]];
     const texcoords = [[0, 0]];
+    const normals = [[0, 1, 0]];
 
     const outPositions = [];
     const outUVs = [];
+    const outNormals = [];
 
     const lines = objText.split('\n');
 
@@ -65,14 +71,29 @@ class Human {
         continue;
       }
 
+      if (line.startsWith('vn ')) {
+        const n = line.split(/\s+/);
+        normals.push([
+          parseFloat(n[1]),
+          parseFloat(n[2]),
+          parseFloat(n[3]),
+        ]);
+        continue;
+      }
+
       if (line.startsWith('f ')) {
         const refs = line.split(/\s+/).slice(1);
         if (refs.length < 3) continue;
 
         for (let j = 1; j < refs.length - 1; j++) {
-          Human._appendFaceVertex(refs[0], positions, texcoords, outPositions, outUVs);
-          Human._appendFaceVertex(refs[j], positions, texcoords, outPositions, outUVs);
-          Human._appendFaceVertex(refs[j + 1], positions, texcoords, outPositions, outUVs);
+          const p0 = Human._resolvePosition(refs[0], positions);
+          const p1 = Human._resolvePosition(refs[j], positions);
+          const p2 = Human._resolvePosition(refs[j + 1], positions);
+          const faceNormal = Human._computeFaceNormal(p0, p1, p2);
+
+          Human._appendFaceVertex(refs[0], positions, texcoords, normals, outPositions, outUVs, outNormals, faceNormal);
+          Human._appendFaceVertex(refs[j], positions, texcoords, normals, outPositions, outUVs, outNormals, faceNormal);
+          Human._appendFaceVertex(refs[j + 1], positions, texcoords, normals, outPositions, outUVs, outNormals, faceNormal);
         }
       }
     }
@@ -82,11 +103,12 @@ class Human {
     return {
       vertices: new Float32Array(outPositions),
       uvs: new Float32Array(outUVs),
+      normals: new Float32Array(outNormals),
       vertexCount: outPositions.length / 3,
     };
   }
 
-  static _appendFaceVertex(ref, positions, texcoords, outPositions, outUVs) {
+  static _appendFaceVertex(ref, positions, texcoords, normals, outPositions, outUVs, outNormals, fallbackNormal) {
     const parts = ref.split('/');
 
     let pi = parseInt(parts[0], 10);
@@ -100,8 +122,44 @@ class Human {
       uv = texcoords[ti] || uv;
     }
 
+    let normal = fallbackNormal || [0, 1, 0];
+    if (parts.length > 2 && parts[2] !== '') {
+      let ni = parseInt(parts[2], 10);
+      if (ni < 0) ni = normals.length + ni;
+      normal = normals[ni] || normal;
+    }
+
     outPositions.push(p[0], p[1], p[2]);
     outUVs.push(uv[0], uv[1]);
+    outNormals.push(normal[0], normal[1], normal[2]);
+  }
+
+  static _resolvePosition(ref, positions) {
+    const parts = ref.split('/');
+    let pi = parseInt(parts[0], 10);
+    if (pi < 0) pi = positions.length + pi;
+    return positions[pi] || [0, 0, 0];
+  }
+
+  static _computeFaceNormal(p0, p1, p2) {
+    const ux = p1[0] - p0[0];
+    const uy = p1[1] - p0[1];
+    const uz = p1[2] - p0[2];
+    const vx = p2[0] - p0[0];
+    const vy = p2[1] - p0[1];
+    const vz = p2[2] - p0[2];
+
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+
+    const len = Math.hypot(nx, ny, nz);
+    if (len < 1e-8) return [0, 1, 0];
+
+    nx /= len;
+    ny /= len;
+    nz /= len;
+    return [nx, ny, nz];
   }
 
   static _normalizePositions(flatPositions) {
@@ -178,16 +236,22 @@ class Human {
     gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, mesh.uvs, gl.STATIC_DRAW);
 
+    const normalBuffer = gl.createBuffer();
+    if (!normalBuffer) return false;
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.normals, gl.STATIC_DRAW);
+
     Human._buffers.set(gl, {
       vertexBuffer,
       uvBuffer,
+      normalBuffer,
       vertexCount: mesh.vertexCount,
     });
 
     return true;
   }
 
-  render(gl, camera, textureManager, useTexture) {
+  render(gl, camera, textureManager, useTexture, lighting=null) {
     if (!Human._mesh) return;
     if (!Human._initBuffers(gl)) return;
 
@@ -199,6 +263,8 @@ class Human {
     gl.uniformMatrix4fv(u_ModelMatrix, false, this.modelMatrix.elements);
     gl.uniformMatrix4fv(u_ViewMatrix, false, camera.getViewMatrix().elements);
     gl.uniformMatrix4fv(u_ProjectionMatrix, false, camera.getProjectionMatrix().elements);
+    const normalMatrix = new Matrix4().setInverseOf(this.modelMatrix).transpose();
+    gl.uniformMatrix4fv(u_NormalMatrix, false, normalMatrix.elements);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, gpu.vertexBuffer);
     gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 0, 0);
@@ -208,8 +274,22 @@ class Human {
     gl.vertexAttribPointer(a_UV, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(a_UV);
 
+    gl.bindBuffer(gl.ARRAY_BUFFER, gpu.normalBuffer);
+    gl.vertexAttribPointer(a_Normal, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_Normal);
+
     gl.uniform4fv(u_Color, this.color);
     gl.uniform1i(u_UseTexture, 0);
+    gl.uniform1i(u_UseLighting, this.useLighting ? 1 : 0);
+    if (this.useLighting) {
+      const lightDirection = (lighting && lighting.direction) ? lighting.direction : this.lightDirection;
+      const lightColor = (lighting && lighting.color) ? lighting.color : this.lightColor;
+      const ambientColor = (lighting && lighting.ambient) ? lighting.ambient : this.ambientColor;
+
+      gl.uniform3fv(u_LightDirection, lightDirection);
+      gl.uniform3fv(u_LightColor, lightColor);
+      gl.uniform3fv(u_AmbientColor, ambientColor);
+    }
 
     gl.drawArrays(gl.TRIANGLES, 0, gpu.vertexCount);
   }

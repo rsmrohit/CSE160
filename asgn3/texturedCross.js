@@ -12,6 +12,10 @@ class TexturedCross {
     
     this.color = [1.0, 1.0, 1.0, 1.0];
     this.textureName = null;
+    this.useLighting = false;
+    this.lightDirection = [0.6, 1.0, 0.4];
+    this.lightColor = [1.0, 0.97, 0.9];
+    this.ambientColor = [0.25, 0.25, 0.28];
     
     this.modelMatrix = new Matrix4();
     
@@ -36,9 +40,19 @@ class TexturedCross {
       0, 0,  1, 0,  1, 1,
       0, 0,  1, 1,  0, 1,
     ]);
+
+    this.normals = new Float32Array([
+      // Quad A
+      -0.7071, 0,  0.7071,  -0.7071, 0,  0.7071,  -0.7071, 0,  0.7071,
+      -0.7071, 0,  0.7071,  -0.7071, 0,  0.7071,  -0.7071, 0,  0.7071,
+      // Quad B
+      -0.7071, 0, -0.7071,  -0.7071, 0, -0.7071,  -0.7071, 0, -0.7071,
+      -0.7071, 0, -0.7071,  -0.7071, 0, -0.7071,  -0.7071, 0, -0.7071,
+    ]);
     
     this.vertexBuffer = null;
     this.uvBuffer = null;
+    this.normalBuffer = null;
   }
   
   /**
@@ -98,6 +112,16 @@ class TexturedCross {
     
     gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.uvs, gl.STATIC_DRAW);
+
+    // Create normal buffer
+    this.normalBuffer = gl.createBuffer();
+    if (!this.normalBuffer) {
+      console.log('Failed to create normal buffer');
+      return false;
+    }
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.normals, gl.STATIC_DRAW);
     
     return true;
   }
@@ -118,6 +142,8 @@ class TexturedCross {
     gl.uniformMatrix4fv(u_ModelMatrix, false, this.modelMatrix.elements);
     gl.uniformMatrix4fv(u_ViewMatrix, false, camera.getViewMatrix().elements);
     gl.uniformMatrix4fv(u_ProjectionMatrix, false, camera.getProjectionMatrix().elements);
+    const normalMatrix = new Matrix4().setInverseOf(this.modelMatrix).transpose();
+    gl.uniformMatrix4fv(u_NormalMatrix, false, normalMatrix.elements);
     
     // Bind vertex buffer
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
@@ -128,6 +154,11 @@ class TexturedCross {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
     gl.vertexAttribPointer(a_UV, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(a_UV);
+
+    // Bind normal buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.normalBuffer);
+    gl.vertexAttribPointer(a_Normal, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(a_Normal);
     
     // Set color
     gl.uniform4fv(u_Color, this.color);
@@ -138,6 +169,13 @@ class TexturedCross {
       gl.uniform1i(u_UseTexture, 1);
     } else {
       gl.uniform1i(u_UseTexture, 0);
+    }
+
+    gl.uniform1i(u_UseLighting, this.useLighting ? 1 : 0);
+    if (this.useLighting) {
+      gl.uniform3fv(u_LightDirection, this.lightDirection);
+      gl.uniform3fv(u_LightColor, this.lightColor);
+      gl.uniform3fv(u_AmbientColor, this.ambientColor);
     }
     
     // Draw the cross (4 triangles total)

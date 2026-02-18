@@ -79,6 +79,7 @@ class World {
           wallBlock.scale = [length, length, length];
           wallBlock.color = [0.7, 0.7, 0.7, 1.0]; // Gray
           wallBlock.setTexture('wall');
+          wallBlock.useLighting = true;
           this.objects.push(wallBlock);
         }
       }
@@ -97,6 +98,7 @@ class World {
     ground.scale = [100, 0.1, 100];
     ground.color = [0.3, 0.8, 0.3, 1.0]; // Green
     ground.setTexture("ground");
+    ground.useLighting = false;
     this.objects.push(ground);
     
     // Test cube 1
@@ -106,6 +108,7 @@ class World {
     cube1.rotation = [0, 45, 0];
     cube1.color = [1.0, 0.5, 0.2, 1.0]; // Orange
     cube1.setTexture('myst');
+    cube1.useLighting = false;
     this.objects.push(cube1);
     
     // // Test cube 2
@@ -133,7 +136,8 @@ class World {
 
     const human = new Human();
     human.position = [-1, 1.0, 3];
-    human.scale = [2.2, 2.2, 2.2];
+    human.scale = [3, 3, 3];
+    human.useLighting = true;
     this.objects.push(human);
 
     const camel = new Camel();
@@ -167,6 +171,7 @@ class World {
         cross.rotation = [0, Math.random() * 360, 0];
         cross.color = [1.0, 1.0, 1.0, 1.0];
         cross.setTexture('grass');
+        cross.useLighting = false;
         this.objects.push(cross);
 
         this.grassCrosses.push({
@@ -237,6 +242,7 @@ class World {
     block.scale = [blockSize, blockSize, blockSize];
     block.color = [1.0, 1.0, 1.0, 1.0];
     block.setTexture('checkerboard');
+    block.useLighting = false;
     this.objects.push(block);
     this.placedBlocks.set(this.getBlockKey(targetPos), block);
     return true;
@@ -309,10 +315,10 @@ class World {
   /**
    * Render all objects in the world
    */
-  render(gl, camera, useTexture) {
+  render(gl, camera, useTexture, lighting=null) {
     // Simply render all objects
     for (let i = 0, n = this.objects.length; i < n; i++) {
-      this.objects[i].render(gl, camera, this.textureManager, useTexture);
+      this.objects[i].render(gl, camera, this.textureManager, useTexture, lighting);
     }
   }
   

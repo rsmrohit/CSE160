@@ -3,46 +3,6 @@
 // rmamidip@ucsc.edu
 // main.js - Main application entry point
 
-// Vertex shader program
-const VSHADER_SOURCE = `
-  attribute vec4 a_Position;
-  attribute vec2 a_UV;
-  
-  uniform mat4 u_ModelMatrix;
-  uniform mat4 u_ViewMatrix;
-  uniform mat4 u_ProjectionMatrix;
-  
-  varying vec2 v_UV;
-  
-  void main() {
-    gl_Position = u_ProjectionMatrix * u_ViewMatrix * u_ModelMatrix * a_Position;
-    v_UV = a_UV;
-  }
-`;
-
-// Fragment shader program
-const FSHADER_SOURCE = `
-  #ifdef GL_ES
-  precision mediump float;
-  #endif
-  
-  uniform sampler2D u_Sampler;
-  uniform bool u_UseTexture;
-  uniform vec4 u_Color;
-  
-  varying vec2 v_UV;
-  
-  void main() {
-    if (u_UseTexture) {
-      vec4 texColor = texture2D(u_Sampler, v_UV);
-      if (texColor.a < 0.1) discard;
-      gl_FragColor = texColor;
-    } else {
-      gl_FragColor = u_Color;
-    }
-  }
-`;
-
 // Global variables
 let gl;
 let canvas;
@@ -50,16 +10,26 @@ let camera;
 let world;
 let textureManager;
 let player;
+let lighting;
 
 // Shader locations
 let a_Position;
 let a_UV;
+let a_Normal;
 let u_ModelMatrix;
 let u_ViewMatrix;
 let u_ProjectionMatrix;
+let u_NormalMatrix;
 let u_Sampler;
 let u_UseTexture;
+let u_UseLighting;
 let u_Color;
+let u_LightDirection;
+let u_LightColor;
+let u_AmbientColor;
+let u_FogColor;
+let u_FogNear;
+let u_FogFar;
 
 // Performance tracking
 let g_lastFrameTime = performance.now();
@@ -117,16 +87,32 @@ function connectVariablesToGLSL() {
     return false;
   }
 
+  a_Normal = gl.getAttribLocation(gl.program, 'a_Normal');
+  if (a_Normal < 0) {
+    console.log('Failed to get the storage location of a_Normal');
+    return false;
+  }
+
   // Get uniform locations
   u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
   u_ViewMatrix = gl.getUniformLocation(gl.program, 'u_ViewMatrix');
   u_ProjectionMatrix = gl.getUniformLocation(gl.program, 'u_ProjectionMatrix');
+  u_NormalMatrix = gl.getUniformLocation(gl.program, 'u_NormalMatrix');
   u_Sampler = gl.getUniformLocation(gl.program, 'u_Sampler');
   u_UseTexture = gl.getUniformLocation(gl.program, 'u_UseTexture');
+  u_UseLighting = gl.getUniformLocation(gl.program, 'u_UseLighting');
   u_Color = gl.getUniformLocation(gl.program, 'u_Color');
+  u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
+  u_LightColor = gl.getUniformLocation(gl.program, 'u_LightColor');
+  u_AmbientColor = gl.getUniformLocation(gl.program, 'u_AmbientColor');
+  u_FogColor = gl.getUniformLocation(gl.program, 'u_FogColor');
+  u_FogNear = gl.getUniformLocation(gl.program, 'u_FogNear');
+  u_FogFar = gl.getUniformLocation(gl.program, 'u_FogFar');
 
-  if (!u_ModelMatrix || !u_ViewMatrix || !u_ProjectionMatrix || 
-      !u_Sampler || !u_UseTexture || !u_Color) {
+  if (!u_ModelMatrix || !u_ViewMatrix || !u_ProjectionMatrix || !u_NormalMatrix ||
+      !u_Sampler || !u_UseTexture || !u_UseLighting || !u_Color ||
+      !u_LightDirection || !u_LightColor || !u_AmbientColor ||
+      !u_FogColor || !u_FogNear || !u_FogFar) {
     console.log('Failed to get uniform locations');
     return false;
   }
@@ -140,17 +126,23 @@ function connectVariablesToGLSL() {
 function addActionListeners() {
   // Camera position controls
   document.getElementById('camera-x').addEventListener('input', function() {
-    camera.position.elements[0] = parseFloat(this.value);
+    const p = player.getPosition().elements;
+    player.setPosition(parseFloat(this.value), p[1], p[2], false);
+    syncCameraToPlayer();
     document.getElementById('camera-x-value').textContent = this.value;
   });
 
   document.getElementById('camera-y').addEventListener('input', function() {
-    camera.position.elements[1] = parseFloat(this.value);
+    const p = player.getPosition().elements;
+    player.setPosition(p[0], parseFloat(this.value), p[2], true);
+    syncCameraToPlayer();
     document.getElementById('camera-y-value').textContent = this.value;
   });
 
   document.getElementById('camera-z').addEventListener('input', function() {
-    camera.position.elements[2] = parseFloat(this.value);
+    const p = player.getPosition().elements;
+    player.setPosition(p[0], p[1], parseFloat(this.value), false);
+    syncCameraToPlayer();
     document.getElementById('camera-z-value').textContent = this.value;
   });
 
@@ -171,6 +163,8 @@ function addActionListeners() {
 
   document.getElementById('reset-camera').addEventListener('click', function() {
     camera.reset();
+    player.reset([camera.position.elements[0], camera.position.elements[1], camera.position.elements[2]]);
+    syncCameraToPlayer();
     updateCameraSliders();
   });
 
@@ -252,9 +246,9 @@ function handleKeyDown(ev=null, placement=null, deltaTime=0) {
     if (ev.keyCode === 13 && placement === "down") {
       console.log(
         "Camera position:",
-        `x=${camera.position.elements[0].toFixed(2)}, ` +
-        `y=${camera.position.elements[1].toFixed(2)}, ` +
-        `z=${camera.position.elements[2].toFixed(2)}`
+        `x=${player.getPosition().elements[0].toFixed(2)}, ` +
+        `y=${player.getPosition().elements[1].toFixed(2)}, ` +
+        `z=${player.getPosition().elements[2].toFixed(2)}`
       );
     }
 
@@ -273,7 +267,19 @@ function handleKeyDown(ev=null, placement=null, deltaTime=0) {
     return;
   }
 
-  player.update(keyMap, deltaTime, mouseLookEnabled);
+  const rotateSpeed = 120.0 * deltaTime;
+  if (!mouseLookEnabled) {
+    if (keyMap.has(81)) camera.pan -= rotateSpeed; // Q
+    if (keyMap.has(69)) camera.pan += rotateSpeed; // E
+    if (keyMap.has(38)) camera.tilt += rotateSpeed; // Up
+    if (keyMap.has(40)) camera.tilt -= rotateSpeed; // Down
+  }
+
+  if (camera.tilt > 89) camera.tilt = 89;
+  if (camera.tilt < -89) camera.tilt = -89;
+
+  player.update(keyMap, deltaTime, camera.pan);
+  syncCameraToPlayer();
 
   // for (const code of keyMap) {
   //   if (code == 87) // W - forward
@@ -301,6 +307,13 @@ function handleKeyDown(ev=null, placement=null, deltaTime=0) {
   updateCameraSliders();
 }
 
+function syncCameraToPlayer() {
+  const p = player.getPosition().elements;
+  camera.position.elements[0] = p[0];
+  camera.position.elements[1] = p[1];
+  camera.position.elements[2] = p[2];
+}
+
 /**
  * Main rendering loop
  */
@@ -320,9 +333,12 @@ function tick() {
   
   // Clear buffers
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  setFogUniforms();
+  updateLightingFromPlayer();
   
   // Render the world
-  world.render(gl, camera, useTexture);
+  world.render(gl, camera, useTexture, lighting);
   
   // Request next frame
   requestAnimationFrame(tick);
@@ -362,17 +378,54 @@ function main() {
   
   // Initialize world
   world = new World(gl, textureManager);
-  player = new Player(map, world.getObjects(), camera);
+  player = new Player(map, world.getObjects(), [camera.position.elements[0], camera.position.elements[1], camera.position.elements[2]]);
+  syncCameraToPlayer();
+
+  // Shared lighting object (decoupled from camera/player and easy to modify)
+  lighting = {
+    direction: [0.6, 1.0, 0.4],
+    color: [1.0, 1.0, 1.0],
+    ambient: [0.2, 0.2, 0.2],
+  };
   
   // Set up UI controls
   addActionListeners();
   updateCameraSliders();
   
   // Set clear color
-  gl.clearColor(0.53, 0.81, 0.92, 1.0); // Sky blue
+  gl.clearColor(0.64, 0.64, 0.64, 1.0); // Sky blue
   
   // Start rendering loop
   requestAnimationFrame(tick);
   
   console.log('Assignment 3 initialized successfully');
+}
+
+function setFogUniforms() {
+  gl.uniform3f(u_FogColor, 0.64, 0.64, 0.64);
+  gl.uniform1f(u_FogNear, 1);
+  gl.uniform1f(u_FogFar, 20);
+}
+
+function updateLightingFromPlayer() {
+  if (!lighting || !player) return;
+
+  const p = player.getPosition().elements;
+  const panRad = camera.pan * Math.PI / 180;
+  const tiltRad = camera.tilt * Math.PI / 180;
+
+  // Place light in front of and above the player.
+  const offsetForward = 1;
+  const offsetUp = 1;
+  const lx = p[0] + Math.sin(panRad) * offsetForward;
+  const ly = p[1] + offsetUp;
+  const lz = p[2] - Math.cos(panRad) * offsetForward;
+  lighting.position = [lx, ly, lz];
+
+  // Match light direction to the exact camera/player look direction.
+  lighting.direction = [
+    Math.sin(panRad) * Math.cos(tiltRad),
+    Math.sin(tiltRad),
+    -Math.cos(panRad) * Math.cos(tiltRad),
+  ];
 }

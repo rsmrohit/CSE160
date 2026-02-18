@@ -1,42 +1,56 @@
 class Player {
-    constructor(map, objects, camera){
+    constructor(map, objects, startPosition=[0, 2, 5]){
         this.map = map;
         this.mapBlockLength = 5; // hardcoded
         this.objects = objects;
-        this.camera = camera;
+        this.position = new Vector3(startPosition);
+        this.collisionRadius = 0.9;
 
         // Vertical movement state for jump/fall
         this.verticalVelocity = 0;
         this.gravity = -20;
         this.jumpVelocity = 7;
-        this.groundY = this.camera.position.elements[1];
+        this.groundY = this.position.elements[1];
         this.isGrounded = true;
         this.wasSpaceDown = false;
     }
 
-    update(movement, deltaTime, mouseLookEnabled=false) {
+    reset(startPosition=[0, 2, 5]) {
+        this.position = new Vector3(startPosition);
+        this.groundY = startPosition[1];
+        this.verticalVelocity = 0;
+        this.isGrounded = true;
+        this.wasSpaceDown = false;
+    }
+
+    setPosition(x, y, z, updateGround=true) {
+        this.position.elements[0] = x;
+        this.position.elements[1] = y;
+        this.position.elements[2] = z;
+        if (updateGround) {
+            this.groundY = y;
+            this.verticalVelocity = 0;
+            this.isGrounded = true;
+        }
+    }
+
+    getPosition() {
+        return this.position;
+    }
+
+    update(movement, deltaTime, panDegrees=0) {
         const moveSpeed = 6.0 * deltaTime;
-        const rotateSpeed = 120.0 * deltaTime;
-
-        if (movement.has(87) && this.checkCollisionMap(this.camera.moveForwardGet(moveSpeed))) { // W
-            this.camera.moveForward(moveSpeed);
+        if (movement.has(87) && this.checkCollision(this.moveForwardGet(moveSpeed, panDegrees))) { // W
+            this.moveForward(moveSpeed, panDegrees);
         }
-        if (movement.has(83) && this.checkCollisionMap(this.camera.moveForwardGet(-moveSpeed))) { // S
-            this.camera.moveForward(-moveSpeed);
+        if (movement.has(83) && this.checkCollision(this.moveForwardGet(-moveSpeed, panDegrees))) { // S
+            this.moveForward(-moveSpeed, panDegrees);
         }
-        if (movement.has(65) && this.checkCollisionMap(this.camera.moveRightGet(-moveSpeed))) { // A
-            this.camera.moveRight(-moveSpeed);
+        if (movement.has(65) && this.checkCollision(this.moveRightGet(-moveSpeed, panDegrees))) { // A
+            this.moveRight(-moveSpeed, panDegrees);
         }
-        if (movement.has(68) && this.checkCollisionMap(this.camera.moveRightGet(moveSpeed))) { // D
-            this.camera.moveRight(moveSpeed);
-        }
-
-        // Keyboard look controls are active only when mouse look is disabled
-        if (!mouseLookEnabled) {
-            if (movement.has(81)) this.camera.pan -= rotateSpeed; // Q
-            if (movement.has(69)) this.camera.pan += rotateSpeed; // E
-            if (movement.has(38)) this.camera.tilt += rotateSpeed; // Up
-            if (movement.has(40)) this.camera.tilt -= rotateSpeed; // Down
+        if (movement.has(68) && this.checkCollision(this.moveRightGet(moveSpeed, panDegrees))) { // D
+            this.moveRight(moveSpeed, panDegrees);
         }
 
         // Jump on new Space press while grounded
@@ -49,13 +63,48 @@ class Player {
 
         // Gravity and floor collision
         this.verticalVelocity += this.gravity * deltaTime;
-        this.camera.position.elements[1] += this.verticalVelocity * deltaTime;
+        this.position.elements[1] += this.verticalVelocity * deltaTime;
 
-        if (this.camera.position.elements[1] <= this.groundY) {
-            this.camera.position.elements[1] = this.groundY;
+        if (this.position.elements[1] <= this.groundY) {
+            this.position.elements[1] = this.groundY;
             this.verticalVelocity = 0;
             this.isGrounded = true;
         }
+    }
+
+    moveForward(distance, panDegrees) {
+        let panRad = panDegrees * Math.PI / 180;
+        this.position.elements[0] += Math.sin(panRad) * distance;
+        this.position.elements[2] -= Math.cos(panRad) * distance;
+    }
+
+    moveForwardGet(distance, panDegrees) {
+        let panRad = panDegrees * Math.PI / 180;
+        return [
+            this.position.elements[0] + Math.sin(panRad) * distance,
+            this.position.elements[1],
+            this.position.elements[2] - Math.cos(panRad) * distance
+        ];
+    }
+
+    moveRight(distance, panDegrees) {
+        let panRad = panDegrees * Math.PI / 180;
+        this.position.elements[0] += Math.cos(panRad) * distance;
+        this.position.elements[2] += Math.sin(panRad) * distance;
+    }
+
+    moveRightGet(distance, panDegrees) {
+        let panRad = panDegrees * Math.PI / 180;
+        return [
+            this.position.elements[0] + Math.cos(panRad) * distance,
+            this.position.elements[1],
+            this.position.elements[2] + Math.sin(panRad) * distance
+        ];
+    }
+
+    checkCollision(nextPosition) {
+        return this.checkCollisionMap(nextPosition, this.collisionRadius) &&
+               this.checkCollisionObjects(nextPosition, this.collisionRadius);
     }
 
     checkCollisionMap(nextPosition, playerRadius=1) {
@@ -84,6 +133,34 @@ class Player {
         }
         
         return true; // No collision
+    }
+
+    checkCollisionObjects(nextPosition, playerRadius=1) {
+        for (let i = 0; i < this.objects.length; i++) {
+            const obj = this.objects[i];
+            if (!(obj instanceof TexturedCube)) continue;
+            if (!obj.position || !obj.scale) continue;
+            if (obj.scale[1] < 0.5) continue; // ignore near-flat surfaces
+            if (obj.position[1] < 0.25) continue; // ignore ground plane
+
+            const halfX = obj.scale[0] * 0.5;
+            const halfZ = obj.scale[2] * 0.5;
+            const minX = obj.position[0] - halfX;
+            const maxX = obj.position[0] + halfX;
+            const minZ = obj.position[2] - halfZ;
+            const maxZ = obj.position[2] + halfZ;
+
+            const closestX = Math.max(minX, Math.min(nextPosition[0], maxX));
+            const closestZ = Math.max(minZ, Math.min(nextPosition[2], maxZ));
+
+            const dx = nextPosition[0] - closestX;
+            const dz = nextPosition[2] - closestZ;
+
+            if ((dx * dx + dz * dz) < playerRadius * playerRadius) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }

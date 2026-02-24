@@ -29,6 +29,7 @@ class World {
     this.maxHumans = 200;
     this.humanMoveBounds = null;
     this.humanActiveRange = 10;
+    this.humanSpawnRadius = 18;
     this.humanYawOffsetDeg = 0;
     this.humanTurnSpeedDeg = 240;
     this.humanPriorityMin = 1;
@@ -113,7 +114,7 @@ class World {
     ground.useLighting = false;
     this.objects.push(ground);
 
-    this.createHumanCrowd(this.maxHumans);
+    this.createHumanCrowd(this.maxHumans, null, this.humanSpawnRadius);
     this.createSpecialBlueHuman();
   }
 
@@ -147,7 +148,19 @@ class World {
     return currentDeg + delta;
   }
 
-  getRandomWalkablePosition(y = 1.0) {
+  getRandomWalkablePosition(y = 1.0, centerXZ = null, radius = null) {
+    if (centerXZ && radius && radius > 0) {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * radius;
+        const x = centerXZ[0] + Math.cos(angle) * r;
+        const z = centerXZ[1] + Math.sin(angle) * r;
+        const pos = [x, y, z];
+
+        if (this.collisionSystem.isMapWalkable(pos, 0.2)) return pos;
+      }
+    }
+
     const length = 5;
     const rows = map.length;
     const cols = map[0].length;
@@ -169,8 +182,9 @@ class World {
     return [0, y, 0];
   }
 
-  createHumanCrowd(maxHumans = 48) {
+  createHumanCrowd(maxHumans = 48, centerXZ = null, spawnRadius = null) {
     this.humanAgents = [];
+    const useRadius = (spawnRadius && spawnRadius > 0) ? spawnRadius : this.humanSpawnRadius;
 
     const bounds = this.getMapWorldBounds();
     this.humanMoveBounds = {
@@ -182,7 +196,7 @@ class World {
 
     for (let i = 0; i < maxHumans; i++) {
       const human = new Human();
-      const spawn = this.getRandomWalkablePosition(1.0);
+      const spawn = this.getRandomWalkablePosition(1.0, centerXZ, useRadius);
       const dir = this.randomUnitDirectionXZ();
       const speed = 0.6 + Math.random() * 0.8;
       const uniformScale = 2.0 + Math.random() * 1.0;
@@ -210,6 +224,24 @@ class World {
         priority,
       });
     }
+  }
+
+  clearHumanCrowd() {
+    for (let i = 0; i < this.humanAgents.length; i++) {
+      this.removeObject(this.humanAgents[i].human);
+    }
+    this.humanAgents = [];
+  }
+
+  setCrowdSettings(count, spawnRadius, focusPosition = null) {
+    const nextCount = Math.max(0, Math.floor(count));
+    const nextRadius = Math.max(1, parseFloat(spawnRadius));
+    this.maxHumans = nextCount;
+    this.humanSpawnRadius = nextRadius;
+
+    const centerXZ = focusPosition ? [focusPosition[0], focusPosition[2]] : null;
+    this.clearHumanCrowd();
+    this.createHumanCrowd(this.maxHumans, centerXZ, this.humanSpawnRadius);
   }
 
   createSpecialBlueHuman() {
@@ -240,9 +272,22 @@ class World {
     if (!this.specialHuman || !camera) return;
     const forward = this.getForwardDirection(camera);
     const camPos = camera.position.elements;
-    this.specialHuman.position[0] = camPos[0] + forward.x * distance;
-    this.specialHuman.position[2] = camPos[2] + forward.z * distance;
-    this.specialHuman.rotation[1] = this.getHumanYawFromDirection(-forward.x, -forward.z);
+
+    const offsets = [0, -0.8, 0.8, -1.6, 1.6];
+    for (let i = 0; i < offsets.length; i++) {
+      const d = distance + offsets[i];
+      const x = camPos[0] + forward.x * d;
+      const z = camPos[2] + forward.z * d;
+      if (this.collisionSystem.isMapWalkable([x, this.specialHuman.position[1], z], this.specialHumanRadius)) {
+        this.specialHuman.position[0] = x;
+        this.specialHuman.position[2] = z;
+        this.specialHuman.rotation[1] = this.getHumanYawFromDirection(-forward.x, -forward.z);
+        return;
+      }
+    }
+
+    // Fallback to a known valid map spawn.
+    this.relocateSpecialHuman();
   }
 
   updateSpecialHumanInteraction(focusPosition, focusRadius) {

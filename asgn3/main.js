@@ -175,6 +175,27 @@ function addActionListeners() {
     lastMouseY = null;
   });
 
+  const crowdCountSlider = document.getElementById('crowd-count');
+  const crowdRadiusSlider = document.getElementById('crowd-radius');
+  const crowdCountValue = document.getElementById('crowd-count-value');
+  const crowdRadiusValue = document.getElementById('crowd-radius-value');
+
+  crowdCountSlider.value = String(world.maxHumans);
+  crowdRadiusSlider.value = String(Math.round(world.humanSpawnRadius));
+  crowdCountValue.textContent = crowdCountSlider.value;
+  crowdRadiusValue.textContent = crowdRadiusSlider.value;
+
+  const applyCrowdSettings = function() {
+    const count = parseInt(crowdCountSlider.value, 10);
+    const radius = parseFloat(crowdRadiusSlider.value);
+    crowdCountValue.textContent = crowdCountSlider.value;
+    crowdRadiusValue.textContent = crowdRadiusSlider.value;
+    world.setCrowdSettings(count, radius, player.getPosition().elements);
+  };
+
+  crowdCountSlider.addEventListener('input', applyCrowdSettings);
+  crowdRadiusSlider.addEventListener('input', applyCrowdSettings);
+
   // Keyboard controls for camera movement (WASD)
   document.addEventListener('keydown', function(ev) {
     handleKeyDown(ev, "down");

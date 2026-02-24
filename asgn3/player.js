@@ -1,8 +1,6 @@
 class Player {
-    constructor(map, objects, startPosition=[0, 2, 5]){
-        this.map = map;
-        this.mapBlockLength = 5; // hardcoded
-        this.objects = objects;
+    constructor(collisionSystem, startPosition=[0, 2, 5]){
+        this.collisionSystem = collisionSystem;
         this.position = new Vector3(startPosition);
         this.collisionRadius = 0.9;
 
@@ -103,64 +101,17 @@ class Player {
     }
 
     checkCollision(nextPosition) {
-        return this.checkCollisionMap(nextPosition, this.collisionRadius) &&
-               this.checkCollisionObjects(nextPosition, this.collisionRadius);
-    }
-
-    checkCollisionMap(nextPosition, playerRadius=1) {
-        const length = this.mapBlockLength;
-        const mapWidth = this.map.length * length;
-        const mapHeight = this.map[0].length * length;
-        
-        // Check the player's bounding box corners
-        var checkPoints = [
-            [nextPosition[0] - playerRadius, nextPosition[2] - playerRadius],
-            [nextPosition[0] + playerRadius, nextPosition[2] - playerRadius],
-            [nextPosition[0] - playerRadius, nextPosition[2] + playerRadius],
-            [nextPosition[0] + playerRadius, nextPosition[2] + playerRadius],
-        ];
-        
-        for (let point of checkPoints) {
-            // Add 0.5 * length to shift from centered blocks to corner-aligned grid
-            const x = Math.floor((point[0] + mapWidth / 2 + length / 2) / length);
-            const y = Math.floor((point[1] + mapHeight / 2 + length / 2) / length);
-            
-            if (x < 0 || x >= this.map.length ||
-                y < 0 || y >= this.map[0].length ||
-                this.map[x][y] === 1) {
-                return false; // Collision
-            }
-        }
-        
-        return true; // No collision
-    }
-
-    checkCollisionObjects(nextPosition, playerRadius=1) {
-        for (let i = 0; i < this.objects.length; i++) {
-            const obj = this.objects[i];
-            if (!(obj instanceof TexturedCube)) continue;
-            if (!obj.position || !obj.scale) continue;
-            if (obj.scale[1] < 0.5) continue; // ignore near-flat surfaces
-            if (obj.position[1] < 0.25) continue; // ignore ground plane
-
-            const halfX = obj.scale[0] * 0.5;
-            const halfZ = obj.scale[2] * 0.5;
-            const minX = obj.position[0] - halfX;
-            const maxX = obj.position[0] + halfX;
-            const minZ = obj.position[2] - halfZ;
-            const maxZ = obj.position[2] + halfZ;
-
-            const closestX = Math.max(minX, Math.min(nextPosition[0], maxX));
-            const closestZ = Math.max(minZ, Math.min(nextPosition[2], maxZ));
-
-            const dx = nextPosition[0] - closestX;
-            const dz = nextPosition[2] - closestZ;
-
-            if ((dx * dx + dz * dz) < playerRadius * playerRadius) {
-                return false;
-            }
-        }
-        return true;
+        if (!this.collisionSystem) return true;
+        return this.collisionSystem.canMoveTo(nextPosition, this.collisionRadius, {
+            excludeFn: function(collider) {
+                return (
+                    collider &&
+                    collider.object &&
+                    typeof Human !== "undefined" &&
+                    collider.object instanceof Human
+                );
+            },
+        });
     }
 
 }

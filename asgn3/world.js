@@ -24,6 +24,18 @@ class World {
     this.textureManager = textureManager;
     this.objects = [];
     this.placedBlocks = new Map();
+    this.collisionSystem = new CollisionSystem(map, 5);
+    this.humanAgents = [];
+    this.maxHumans = 200;
+    this.humanMoveBounds = null;
+    this.humanActiveRange = 10;
+    this.humanYawOffsetDeg = 0;
+    this.humanTurnSpeedDeg = 240;
+    this.humanPriorityMin = 1;
+    this.humanPriorityMax = 100;
+    this.crowdResolveReverse = false;
+    this.specialHuman = null;
+    this.specialHumanRadius = 0.45;
     this.grassCrosses = [];
     this.grassSwayTime = 0;
     
@@ -41,7 +53,7 @@ class World {
     // Load custom textures
     this.textureManager.loadTexture('none', 'images/Untiled.jpg');
     this.textureManager.loadTexture('wall', 'images/wall.png');
-    this.textureManager.loadTexture('ground', 'images/ground.png');
+    this.textureManager.loadTexture('ground', 'images/sidewalk.jpg');
     this.textureManager.loadTexture('grass', 'images/grass.png');
     this.textureManager.loadTexture('myst', 'images/2508.jpg');
     
@@ -51,8 +63,7 @@ class World {
     // Create walls from the map
     this.createWallsFromMap();
 
-    // Scatter decorative grass crosses
-    this.createGrassCrosses();
+    // Scene focus: humans only.
   }
   
   /**
@@ -81,6 +92,7 @@ class World {
           wallBlock.setTexture('wall');
           wallBlock.useLighting = true;
           this.objects.push(wallBlock);
+          this.addObjectCollider(wallBlock);
         }
       }
     }
@@ -100,51 +112,468 @@ class World {
     ground.setTexture("ground");
     ground.useLighting = false;
     this.objects.push(ground);
-    
-    // Test cube 1
-    const cube1 = new TexturedCube();
-    cube1.position = [0, 0.5, 0];
-    cube1.scale = [1, 1, 1];
-    cube1.rotation = [0, 45, 0];
-    cube1.color = [1.0, 0.5, 0.2, 1.0]; // Orange
-    cube1.setTexture('myst');
-    cube1.useLighting = false;
-    this.objects.push(cube1);
-    
-    // // Test cube 2
-    // const cube2 = new TexturedCube();
-    // cube2.position = [-2, 0.5, -2];
-    // cube2.scale = [0.5, 2, 0.5];
-    // cube2.color = [0.2, 0.5, 1.0, 1.0]; // Blue
-    // cube2.setTexture('checkerboard');
-    // this.objects.push(cube2);
-    
-    // // Test cube 3
-    // const cube3 = new TexturedCube();
-    // cube3.position = [2, 0.5, -2];
-    // cube3.scale = [0.5, 0.5, 0.5];
-    // cube3.rotation = [45, 45, 0];
-    // cube3.color = [1.0, 0.2, 0.5, 1.0]; // Pink
-    // cube3.setTexture('checkerboard');
-    // this.objects.push(cube3);
 
-    // Animated characters
-    const humanBasic = new HumanBasic();
-    humanBasic.position = [-5, 1.0, 3];
-    humanBasic.scale = [2, 1.5, 2];
-    this.objects.push(humanBasic);
+    this.createHumanCrowd(this.maxHumans);
+    this.createSpecialBlueHuman();
+  }
 
+  getMapWorldBounds() {
+    const length = 5;
+    const rows = map.length;
+    const cols = map[0].length;
+    const offsetX = -length * cols / 2;
+    const offsetZ = -length * rows / 2;
+    return {
+      minX: offsetX,
+      maxX: offsetX + (cols - 1) * length,
+      minZ: offsetZ,
+      maxZ: offsetZ + (rows - 1) * length,
+    };
+  }
+
+  randomUnitDirectionXZ() {
+    const angle = Math.random() * Math.PI * 2;
+    return [Math.cos(angle), Math.sin(angle)];
+  }
+
+  getHumanYawFromDirection(dirX, dirZ) {
+    return Human.directionToYawDeg(dirX, dirZ, this.humanYawOffsetDeg);
+  }
+
+  rotateAngleToward(currentDeg, targetDeg, maxStepDeg) {
+    let delta = ((targetDeg - currentDeg + 540) % 360) - 180;
+    if (delta > maxStepDeg) delta = maxStepDeg;
+    if (delta < -maxStepDeg) delta = -maxStepDeg;
+    return currentDeg + delta;
+  }
+
+  getRandomWalkablePosition(y = 1.0) {
+    const length = 5;
+    const rows = map.length;
+    const cols = map[0].length;
+    const offsetX = -length * cols / 2;
+    const offsetZ = -length * rows / 2;
+
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const row = Math.floor(Math.random() * rows);
+      const col = Math.floor(Math.random() * cols);
+      if (map[row][col] !== 0) continue;
+
+      const x = col * length + offsetX + (Math.random() - 0.5) * length * 0.5;
+      const z = row * length + offsetZ + (Math.random() - 0.5) * length * 0.5;
+      const pos = [x, y, z];
+
+      if (this.collisionSystem.isMapWalkable(pos, 0.2)) return pos;
+    }
+
+    return [0, y, 0];
+  }
+
+  createHumanCrowd(maxHumans = 48) {
+    this.humanAgents = [];
+
+    const bounds = this.getMapWorldBounds();
+    this.humanMoveBounds = {
+      minX: bounds.minX - 1,
+      maxX: bounds.maxX + 1,
+      minZ: bounds.minZ - 1,
+      maxZ: bounds.maxZ + 1,
+    };
+
+    for (let i = 0; i < maxHumans; i++) {
+      const human = new Human();
+      const spawn = this.getRandomWalkablePosition(1.0);
+      const dir = this.randomUnitDirectionXZ();
+      const speed = 0.6 + Math.random() * 0.8;
+      const uniformScale = 2.0 + Math.random() * 1.0;
+      const priority = Math.floor(
+        this.humanPriorityMin +
+        Math.random() * (this.humanPriorityMax - this.humanPriorityMin + 1)
+      );
+
+      human.position = [spawn[0], spawn[1], spawn[2]];
+      human.scale = [uniformScale, uniformScale, uniformScale];
+      human.rotation = [0, this.getHumanYawFromDirection(dir[0], dir[1]), 0];
+      human.useLighting = true;
+      this.objects.push(human);
+      const collider = this.addObjectCollider(human, {
+        sizeScale: [0.28, 0.40, 0.28],
+      });
+
+      this.humanAgents.push({
+        human,
+        collider,
+        dirX: dir[0],
+        dirZ: dir[1],
+        speed,
+        collisionRadius: uniformScale * 0.14,
+        priority,
+      });
+    }
+  }
+
+  createSpecialBlueHuman() {
     const human = new Human();
-    human.position = [-1, 1.0, 3];
-    human.scale = [3, 3, 3];
+    const spawn = this.getRandomWalkablePosition(0.75);
+    const shortScale = 1.35;
+
+    human.position = [spawn[0], spawn[1], spawn[2]];
+    human.scale = [shortScale, shortScale, shortScale];
+    human.rotation = [0, Math.random() * 360, 0];
     human.useLighting = true;
+    human.color = [0.20, 0.45, 1.0, 1.0];
     this.objects.push(human);
 
-    const camel = new Camel();
-    camel.position = [5, 1.2, 0];
-    camel.scale = [2.2, 2.2, 2.2];
-    camel.rotation = [0, -130, 0];
-    this.objects.push(camel);
+    this.specialHuman = human;
+    this.specialHumanRadius = shortScale * 0.22;
+  }
+
+  relocateSpecialHuman() {
+    if (!this.specialHuman) return;
+    const spawn = this.getRandomWalkablePosition(this.specialHuman.position[1]);
+    this.specialHuman.position[0] = spawn[0];
+    this.specialHuman.position[2] = spawn[2];
+    this.specialHuman.rotation[1] = Math.random() * 360;
+  }
+
+  placeSpecialHumanInFront(camera, distance = 4.5) {
+    if (!this.specialHuman || !camera) return;
+    const forward = this.getForwardDirection(camera);
+    const camPos = camera.position.elements;
+    this.specialHuman.position[0] = camPos[0] + forward.x * distance;
+    this.specialHuman.position[2] = camPos[2] + forward.z * distance;
+    this.specialHuman.rotation[1] = this.getHumanYawFromDirection(-forward.x, -forward.z);
+  }
+
+  updateSpecialHumanInteraction(focusPosition, focusRadius) {
+    if (!this.specialHuman || !focusPosition) return;
+
+    const dx = this.specialHuman.position[0] - focusPosition[0];
+    const dz = this.specialHuman.position[2] - focusPosition[2];
+    const combined = this.specialHumanRadius + focusRadius;
+    if ((dx * dx + dz * dz) <= (combined * combined)) {
+      this.relocateSpecialHuman();
+    }
+  }
+
+  recycleHumanAgent(agent) {
+    const b = this.humanMoveBounds;
+    const h = agent.human;
+    let x = h.position[0];
+    let z = h.position[2];
+
+    if (x < b.minX) x = b.maxX;
+    else if (x > b.maxX) x = b.minX;
+    if (z < b.minZ) z = b.maxZ;
+    else if (z > b.maxZ) z = b.minZ;
+
+    let recycled = [x, h.position[1], z];
+    if (!this.collisionSystem.isMapWalkable(recycled, 0.2)) {
+      recycled = this.getRandomWalkablePosition(h.position[1]);
+    }
+
+    h.position[0] = recycled[0];
+    h.position[2] = recycled[2];
+
+    const dir = this.randomUnitDirectionXZ();
+    agent.dirX = dir[0];
+    agent.dirZ = dir[1];
+    h.rotation[1] = this.getHumanYawFromDirection(agent.dirX, agent.dirZ);
+  }
+
+  recycleHumanAgentAroundFocus(agent, focusPosition) {
+    const h = agent.human;
+    const fx = focusPosition[0];
+    const fz = focusPosition[2];
+    let vx = h.position[0] - fx;
+    let vz = h.position[2] - fz;
+    let len = Math.hypot(vx, vz);
+
+    if (len < 0.001) {
+      const randomDir = this.randomUnitDirectionXZ();
+      vx = randomDir[0];
+      vz = randomDir[1];
+      len = 1;
+    }
+
+    vx /= len;
+    vz /= len;
+
+    const targetDist = this.humanActiveRange * (0.85 + Math.random() * 0.1);
+    let x = fx - vx * targetDist + (Math.random() - 0.5) * 2.0;
+    let z = fz - vz * targetDist + (Math.random() - 0.5) * 2.0;
+    let recycled = [x, h.position[1], z];
+
+    if (!this.collisionSystem.isMapWalkable(recycled, 0.2)) {
+      recycled = this.getRandomWalkablePosition(h.position[1]);
+    }
+
+    h.position[0] = recycled[0];
+    h.position[2] = recycled[2];
+
+    const dir = this.randomUnitDirectionXZ();
+    agent.dirX = dir[0];
+    agent.dirZ = dir[1];
+    h.rotation[1] = this.getHumanYawFromDirection(agent.dirX, agent.dirZ);
+  }
+
+  circlesOverlapXZ(aPos, aRadius, bPos, bRadius) {
+    const dx = aPos[0] - bPos[0];
+    const dz = aPos[2] - bPos[2];
+    const combined = aRadius + bRadius;
+    return (dx * dx + dz * dz) < (combined * combined);
+  }
+
+  isCandidatePositionValid(candidatePos, agent, focusPosition, focusRadius) {
+    // Humans are allowed to pass through wall/map geometry.
+
+    if (focusPosition) {
+      if (this.circlesOverlapXZ(candidatePos, agent.collisionRadius, focusPosition, focusRadius)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  computeAgentDesiredPosition(agent, startPos, deltaTime, focusPosition, focusRadius) {
+    const forwardDist = Math.max(0.02, agent.speed * deltaTime);
+    const forwardPos = Human.stepForward(startPos, agent.dirX, agent.dirZ, forwardDist);
+
+    if (this.isCandidatePositionValid(
+      forwardPos,
+      agent,
+      focusPosition,
+      focusRadius
+    )) {
+      return forwardPos;
+    }
+
+    const slideBase = Math.max(0.10, forwardDist * 0.9);
+    const attempts = [
+      { side: 1, mult: 1.0 },
+      { side: -1, mult: 1.0 },
+      { side: 1, mult: 1.7 },
+      { side: -1, mult: 1.7 },
+    ];
+
+    for (let i = 0; i < attempts.length; i++) {
+      const attempt = attempts[i];
+      const slidePos = Human.stepRight(startPos, agent.dirX, agent.dirZ, slideBase * attempt.mult, attempt.side);
+      if (this.isCandidatePositionValid(
+        slidePos,
+        agent,
+        focusPosition,
+        focusRadius
+      )) {
+        return slidePos;
+      }
+    }
+
+    return startPos;
+  }
+
+  applyPlayerPriorityPush(focusPosition, focusRadius) {
+    if (!focusPosition) return;
+
+    const extraSeparation = 0.08;
+    for (let i = 0; i < this.humanAgents.length; i++) {
+      const agent = this.humanAgents[i];
+      const h = agent.human;
+
+      let dx = h.position[0] - focusPosition[0];
+      let dz = h.position[2] - focusPosition[2];
+      let dist = Math.hypot(dx, dz);
+      const minDist = focusRadius + agent.collisionRadius + extraSeparation;
+      if (dist >= minDist) continue;
+
+      if (dist < 1e-6) {
+        const dir = this.randomUnitDirectionXZ();
+        dx = dir[0];
+        dz = dir[1];
+        dist = 1;
+      } else {
+        dx /= dist;
+        dz /= dist;
+      }
+
+      const push = minDist - dist;
+      h.position[0] += dx * push;
+      h.position[2] += dz * push;
+    }
+  }
+
+  applyHumanPriorityPush(finalPositions, iterations = 3) {
+    const count = this.humanAgents.length;
+    const epsilon = 0.03;
+    const bounds = this.humanMoveBounds;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let i = 0; i < count; i++) {
+        for (let j = i + 1; j < count; j++) {
+          const a = this.humanAgents[i];
+          const b = this.humanAgents[j];
+          const pa = finalPositions[i];
+          const pb = finalPositions[j];
+
+          let dx = pb[0] - pa[0];
+          let dz = pb[2] - pa[2];
+          let dist = Math.hypot(dx, dz);
+          const minDist = a.collisionRadius + b.collisionRadius + epsilon;
+          if (dist >= minDist) continue;
+
+          let winnerIndex = i;
+          let loserIndex = j;
+          if (b.priority > a.priority || (b.priority === a.priority && j < i)) {
+            winnerIndex = j;
+            loserIndex = i;
+          }
+
+          const winnerPos = finalPositions[winnerIndex];
+          const loserPos = finalPositions[loserIndex];
+          dx = loserPos[0] - winnerPos[0];
+          dz = loserPos[2] - winnerPos[2];
+          dist = Math.hypot(dx, dz);
+
+          if (dist < 1e-6) {
+            const randDir = this.randomUnitDirectionXZ();
+            dx = randDir[0];
+            dz = randDir[1];
+            dist = 1;
+          } else {
+            dx /= dist;
+            dz /= dist;
+          }
+
+          const push = minDist - dist;
+          loserPos[0] += dx * push;
+          loserPos[2] += dz * push;
+
+          if (bounds) {
+            if (loserPos[0] < bounds.minX) loserPos[0] = bounds.minX;
+            if (loserPos[0] > bounds.maxX) loserPos[0] = bounds.maxX;
+            if (loserPos[2] < bounds.minZ) loserPos[2] = bounds.minZ;
+            if (loserPos[2] > bounds.maxZ) loserPos[2] = bounds.maxZ;
+          }
+        }
+      }
+    }
+  }
+
+  updateHumanCrowd(deltaTime, focus = null) {
+    if (this.humanAgents.length === 0) return;
+    const focusPosition = focus && focus.position ? focus.position : focus;
+    const focusRadius = focus && focus.radius ? focus.radius : 0.9;
+    const count = this.humanAgents.length;
+    const startPositions = new Array(count);
+    const desiredPositions = new Array(count);
+    const finalPositions = new Array(count);
+
+    for (let i = 0; i < count; i++) {
+      const p = this.humanAgents[i].human.position;
+      const copy = [p[0], p[1], p[2]];
+      startPositions[i] = copy;
+      finalPositions[i] = [p[0], p[1], p[2]];
+    }
+
+    for (let i = 0; i < count; i++) {
+      const agent = this.humanAgents[i];
+      const startPos = startPositions[i];
+      const h = agent.human;
+
+      if (focusPosition) {
+        const dx = startPos[0] - focusPosition[0];
+        const dz = startPos[2] - focusPosition[2];
+        if ((dx * dx + dz * dz) > (this.humanActiveRange * this.humanActiveRange)) {
+          this.recycleHumanAgentAroundFocus(agent, focusPosition);
+          const rp = agent.human.position;
+          const recycled = [rp[0], rp[1], rp[2]];
+          startPositions[i] = recycled;
+          finalPositions[i] = [rp[0], rp[1], rp[2]];
+          desiredPositions[i] = recycled;
+          continue;
+        }
+      }
+
+      const trialPos = Human.stepForward(startPos, agent.dirX, agent.dirZ, Math.max(0.02, agent.speed * deltaTime));
+      const b = this.humanMoveBounds;
+      const outOfRange =
+        trialPos[0] < b.minX || trialPos[0] > b.maxX ||
+        trialPos[2] < b.minZ || trialPos[2] > b.maxZ;
+      if (outOfRange) {
+        this.recycleHumanAgent(agent);
+        const rp = agent.human.position;
+        const recycled = [rp[0], rp[1], rp[2]];
+        startPositions[i] = recycled;
+        finalPositions[i] = [rp[0], rp[1], rp[2]];
+        desiredPositions[i] = recycled;
+        continue;
+      }
+
+      desiredPositions[i] = this.computeAgentDesiredPosition(
+        agent,
+        startPositions[i],
+        deltaTime,
+        focusPosition,
+        focusRadius
+      );
+    }
+
+    const order = [];
+    if (this.crowdResolveReverse) {
+      for (let i = count - 1; i >= 0; i--) order.push(i);
+    } else {
+      for (let i = 0; i < count; i++) order.push(i);
+    }
+    this.crowdResolveReverse = !this.crowdResolveReverse;
+
+    for (let k = 0; k < order.length; k++) {
+      const i = order[k];
+      const agent = this.humanAgents[i];
+      const candidate = desiredPositions[i];
+      if (!candidate) continue;
+
+      const start = startPositions[i];
+      if (candidate[0] === start[0] && candidate[2] === start[2]) continue;
+
+      let blocked = false;
+      for (let j = 0; j < count; j++) {
+        if (j === i) continue;
+        if (this.circlesOverlapXZ(
+          candidate,
+          agent.collisionRadius,
+          finalPositions[j],
+          this.humanAgents[j].collisionRadius
+        )) {
+          const other = this.humanAgents[j];
+          if (agent.priority > other.priority) continue;
+          if (agent.priority === other.priority && i < j) continue;
+          blocked = true;
+          break;
+        }
+      }
+
+      if (!blocked) {
+        finalPositions[i] = [candidate[0], candidate[1], candidate[2]];
+      }
+    }
+
+    this.applyHumanPriorityPush(finalPositions);
+
+    for (let i = 0; i < count; i++) {
+      const h = this.humanAgents[i].human;
+      const dx = finalPositions[i][0] - startPositions[i][0];
+      const dz = finalPositions[i][2] - startPositions[i][2];
+      if ((dx * dx + dz * dz) > 1e-6) {
+        const targetYaw = this.getHumanYawFromDirection(dx, dz);
+        const maxStep = this.humanTurnSpeedDeg * deltaTime;
+        h.rotation[1] = this.rotateAngleToward(h.rotation[1], targetYaw, maxStep);
+      }
+      h.position[0] = finalPositions[i][0];
+      h.position[2] = finalPositions[i][2];
+    }
+
+    this.applyPlayerPriorityPush(focusPosition, focusRadius);
   }
 
   createGrassCrosses() {
@@ -190,6 +619,16 @@ class World {
    */
   addObject(object) {
     this.objects.push(object);
+    if (object.collider) {
+      this.collisionSystem.addCollider(object.collider);
+    }
+  }
+
+  addObjectCollider(object, colliderOptions = {}) {
+    const collider = ColliderFactory.boxFromObject(object, colliderOptions);
+    object.collider = collider;
+    this.collisionSystem.addCollider(collider);
+    return collider;
   }
 
   getForwardDirection(camera) {
@@ -244,6 +683,7 @@ class World {
     block.setTexture('checkerboard');
     block.useLighting = false;
     this.objects.push(block);
+    this.addObjectCollider(block);
     this.placedBlocks.set(this.getBlockKey(targetPos), block);
     return true;
   }
@@ -268,8 +708,7 @@ class World {
       const block = this.placedBlocks.get(key);
       if (!block) continue;
 
-      const index = this.objects.indexOf(block);
-      if (index > -1) this.objects.splice(index, 1);
+      this.removeObject(block);
       this.placedBlocks.delete(key);
       return true;
     }
@@ -285,6 +724,7 @@ class World {
     if (index > -1) {
       this.objects.splice(index, 1);
     }
+    this.collisionSystem.removeCollidersForObject(object);
   }
   
   /**
@@ -292,12 +732,13 @@ class World {
    */
   clear() {
     this.objects = [];
+    this.collisionSystem.colliders = [];
   }
   
   /**
    * Update all objects in the world (for animations, physics, etc.)
    */
-  update(deltaTime) {
+  update(deltaTime, focus = null) {
     this.grassSwayTime += deltaTime;
 
     for (let i = 0; i < this.grassCrosses.length; i++) {
@@ -306,10 +747,10 @@ class World {
         data.baseZ + Math.sin(this.grassSwayTime * data.speed + data.phase) * data.amplitude;
     }
 
-    // Example: rotate test cubes
-    if (this.objects.length > 2) {
-      this.objects[1].rotation[1] += deltaTime * 20; // 20 degrees per second
-    }
+    this.updateHumanCrowd(deltaTime, focus);
+    const focusPosition = focus && focus.position ? focus.position : focus;
+    const focusRadius = focus && focus.radius ? focus.radius : 0.9;
+    this.updateSpecialHumanInteraction(focusPosition, focusRadius);
   }
   
   /**
@@ -327,5 +768,9 @@ class World {
    */
   getObjects() {
     return this.objects;
+  }
+
+  getCollisionSystem() {
+    return this.collisionSystem;
   }
 }

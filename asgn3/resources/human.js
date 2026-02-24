@@ -37,6 +37,38 @@ class Human {
     return Human._parseObj(objText);
   }
 
+  static normalizeDirectionXZ(dirX, dirZ) {
+    const len = Math.hypot(dirX, dirZ);
+    if (len < 1e-6) return [1, 0];
+    return [dirX / len, dirZ / len];
+  }
+
+  static directionToYawDeg(dirX, dirZ, yawOffsetDeg = 0) {
+    const dir = Human.normalizeDirectionXZ(dirX, dirZ);
+    // Human mesh forward axis aligns with +X in model space.
+    return Math.atan2(dir[1], dir[0]) * 180 / Math.PI + yawOffsetDeg;
+  }
+
+  static stepForward(position, dirX, dirZ, distance) {
+    const dir = Human.normalizeDirectionXZ(dirX, dirZ);
+    return [
+      position[0] + dir[0] * distance,
+      position[1],
+      position[2] + dir[1] * distance,
+    ];
+  }
+
+  static stepRight(position, dirX, dirZ, distance, side = 1) {
+    const dir = Human.normalizeDirectionXZ(dirX, dirZ);
+    const rightX = dir[1] * side;
+    const rightZ = -dir[0] * side;
+    return [
+      position[0] + rightX * distance,
+      position[1],
+      position[2] + rightZ * distance,
+    ];
+  }
+
   static _parseObj(objText) {
     const positions = [[0, 0, 0]];
     const texcoords = [[0, 0]];

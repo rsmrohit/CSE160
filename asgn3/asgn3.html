@@ -39,7 +39,7 @@ asgn3.html
 
     <body onload="main()">
         <h2>Rohit Mamidipaka - CSE160 Assignment 3</h2>
-        <p>rmamidip@ucsc.edu</p>
+        <!-- <p>rmamidip@ucsc.edu</p> -->
 
         <canvas id="webgl" width="640" height="480">
             Please use a browser that supports "canvas"
@@ -125,11 +125,14 @@ asgn3.html
             <h3>Debug Controls</h3>
             <button id="toggle-texture">Toggle Texture</button>
             <button id="reset-camera">Reset Camera</button>
-            <label style="margin-left: 10px; width: auto;">
+            <label style="margin-left: 10px; width: auto">
                 <input type="checkbox" id="mouse-look-toggle" />
                 Enable Mouse Look
             </label>
-            <p><strong>Block Controls:</strong> Press <code>C</code> to add block, <code>X</code> to remove block.</p>
+            <p>
+                <strong>Block Controls:</strong> Press <code>C</code> to add
+                block, <code>X</code> to remove block.
+            </p>
         </div>
 
         <!-- WebGL utility libraries -->
@@ -140,6 +143,7 @@ asgn3.html
 
         <!-- Core modules -->
         <script src="./camera.js"></script>
+        <script src="./collision.js"></script>
         <script src="./player.js"></script>
         <script src="./texture.js"></script>
 

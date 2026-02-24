@@ -326,7 +326,10 @@ function tick() {
   // Update FPS
   updateFPS();
   handleKeyDown(null, null, deltaTime);
-  world.update(deltaTime);
+  world.update(deltaTime, {
+    position: player.getPosition().elements,
+    radius: player.collisionRadius,
+  });
   
   // Update camera
   camera.update();
@@ -378,8 +381,9 @@ function main() {
   
   // Initialize world
   world = new World(gl, textureManager);
-  player = new Player(map, world.getObjects(), [camera.position.elements[0], camera.position.elements[1], camera.position.elements[2]]);
+  player = new Player(world.getCollisionSystem(), [camera.position.elements[0], camera.position.elements[1], camera.position.elements[2]]);
   syncCameraToPlayer();
+  world.placeSpecialHumanInFront(camera);
 
   // Shared lighting object (decoupled from camera/player and easy to modify)
   lighting = {

@@ -818,4 +818,9 @@ class World {
   getCollisionSystem() {
     return this.collisionSystem;
   }
+
+  getSpecialHumanPosition() {
+    if (!this.specialHuman) return null;
+    return this.specialHuman.position;
+  }
 }

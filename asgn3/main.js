@@ -11,6 +11,7 @@ let world;
 let textureManager;
 let player;
 let lighting;
+let audioManager;
 
 // Shader locations
 let a_Position;
@@ -198,6 +199,7 @@ function addActionListeners() {
 
   // Keyboard controls for camera movement (WASD)
   document.addEventListener('keydown', function(ev) {
+    if (audioManager) audioManager.unlock();
     handleKeyDown(ev, "down");
   });
 
@@ -234,6 +236,10 @@ function addActionListeners() {
 
     if (camera.tilt > 89) camera.tilt = 89;
     if (camera.tilt < -89) camera.tilt = -89;
+  });
+
+  canvas.addEventListener('mousedown', function() {
+    if (audioManager) audioManager.unlock();
   });
 }
 
@@ -351,6 +357,13 @@ function tick() {
     position: player.getPosition().elements,
     radius: player.collisionRadius,
   });
+  if (audioManager) {
+    audioManager.update(
+      deltaTime,
+      player.getPosition().elements,
+      world.getSpecialHumanPosition()
+    );
+  }
   
   // Update camera
   camera.update();
@@ -395,6 +408,7 @@ function main() {
   
   // Initialize texture manager
   textureManager = new TextureManager(gl);
+  audioManager = new AudioManager();
   
   // Initialize camera
   camera = new Camera();

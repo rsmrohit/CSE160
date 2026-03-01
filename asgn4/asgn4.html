@@ -1,0 +1,310 @@
+<!--
+Rohit Mamidipaka
+ID: 2009124
+rmamidip@ucsc.edu
+asgn4.html
+-->
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Rohit Mamidipaka CSE160 Assignment 4</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+                overflow: hidden;
+            }
+
+            body {
+                font-family: Arial, sans-serif;
+                background: #f2f2f2;
+            }
+
+            .app {
+                display: flex;
+                height: 100vh;
+                width: 100vw;
+            }
+
+            .left-pane {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 12px;
+            }
+
+            .right-pane {
+                width: 420px;
+                padding: 12px;
+                background: #ffffff;
+                border-left: 1px solid #ddd;
+                overflow-y: auto;
+            }
+
+            canvas {
+                border: 1px solid #ccc;
+                display: block;
+                max-width: 100%;
+                max-height: 100%;
+            }
+
+            .controls {
+                margin: 8px 0;
+                padding: 8px;
+                border: 1px solid #e5e5e5;
+                border-radius: 6px;
+                background: #fafafa;
+            }
+
+            .control-group {
+                margin: 5px 0;
+            }
+
+            label {
+                display: inline-block;
+                width: 100px;
+            }
+
+            .slider {
+                width: 180px;
+            }
+
+            h2 {
+                margin: 0 0 8px 0;
+            }
+
+            h3 {
+                margin: 0 0 8px 0;
+            }
+
+            #performance-display {
+                margin-bottom: 8px;
+            }
+        </style>
+    </head>
+
+    <body onload="main()">
+        <div class="app">
+            <div class="left-pane">
+                <canvas id="webgl" width="640" height="480">
+                    Please use a browser that supports "canvas"
+                </canvas>
+            </div>
+
+            <div class="right-pane">
+                <h2>Rohit Mamidipaka - CSE160 Assignment 4</h2>
+                <div id="performance-display">FPS: 0</div>
+
+                <div class="controls">
+                    <h3>Camera Controls</h3>
+
+                    <div class="control-group">
+                        <label>Camera X:</label>
+                        <input
+                            type="range"
+                            min="-10"
+                            max="10"
+                            value="0"
+                            step="0.1"
+                            class="slider"
+                            id="camera-x"
+                        />
+                        <span id="camera-x-value">0</span>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Camera Y:</label>
+                        <input
+                            type="range"
+                            min="-10"
+                            max="10"
+                            value="2"
+                            step="0.1"
+                            class="slider"
+                            id="camera-y"
+                        />
+                        <span id="camera-y-value">2</span>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Camera Z:</label>
+                        <input
+                            type="range"
+                            min="-10"
+                            max="10"
+                            value="5"
+                            step="0.1"
+                            class="slider"
+                            id="camera-z"
+                        />
+                        <span id="camera-z-value">5</span>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Camera Pan:</label>
+                        <input
+                            type="range"
+                            min="-180"
+                            max="180"
+                            value="0"
+                            step="1"
+                            class="slider"
+                            id="camera-pan"
+                        />
+                        <span id="camera-pan-value">0</span>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Camera Tilt:</label>
+                        <input
+                            type="range"
+                            min="-90"
+                            max="90"
+                            value="0"
+                            step="1"
+                            class="slider"
+                            id="camera-tilt"
+                        />
+                        <span id="camera-tilt-value">0</span>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <h3>Debug Controls</h3>
+                    <button id="toggle-texture">Toggle Texture</button>
+                    <button id="toggle-lighting">Lighting: On</button>
+                    <button id="toggle-spotlight">Spotlight: Off</button>
+                    <button id="toggle-normals">Normals: Off</button>
+                    <button id="reset-camera">Reset Camera</button>
+                    <label style="margin-left: 10px; width: auto">
+                        <input type="checkbox" id="mouse-look-toggle" />
+                        Enable Mouse Look
+                    </label>
+                    <p>
+                        <strong>Block Controls:</strong> Press <code>C</code> to
+                        add block, <code>X</code> to remove block.
+                    </p>
+                </div>
+
+                <div class="controls">
+                    <h3>Light Controls</h3>
+                    <div class="control-group">
+                        <label>Light X:</label>
+                        <input
+                            type="range"
+                            min="-20"
+                            max="20"
+                            value="0"
+                            step="0.1"
+                            class="slider"
+                            id="light-x"
+                        />
+                        <span id="light-x-value">0.0</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Light Z:</label>
+                        <input
+                            type="range"
+                            min="-20"
+                            max="20"
+                            value="0"
+                            step="0.1"
+                            class="slider"
+                            id="light-z"
+                        />
+                        <span id="light-z-value">0.0</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Light Y (ly):</label>
+                        <input
+                            type="range"
+                            min="-2"
+                            max="20"
+                            value="5"
+                            step="0.1"
+                            class="slider"
+                            id="light-y"
+                        />
+                        <span id="light-y-value">5.0</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Light Radius:</label>
+                        <input
+                            type="range"
+                            min="0"
+                            max="20"
+                            value="5"
+                            step="0.1"
+                            class="slider"
+                            id="light-radius"
+                        />
+                        <span id="light-radius-value">5.0</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Light Speed:</label>
+                        <input
+                            type="range"
+                            min="0"
+                            max="5"
+                            value="1.2"
+                            step="0.1"
+                            class="slider"
+                            id="light-speed"
+                        />
+                        <span id="light-speed-value">1.2</span>
+                    </div>
+                    <div class="control-group">
+                        <label>Target Y:</label>
+                        <input
+                            type="range"
+                            min="-5"
+                            max="10"
+                            value="0"
+                            step="0.1"
+                            class="slider"
+                            id="light-target-y"
+                        />
+                        <span id="light-target-y-value">0.0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- WebGL utility libraries -->
+        <script src="./lib/webgl-utils.js"></script>
+        <script src="./lib/webgl-debug.js"></script>
+        <script src="./lib/cuon-utils.js"></script>
+        <script src="./lib/cuon-matrix-cse160.js"></script>
+
+        <!-- Core modules -->
+        <script src="./camera.js"></script>
+        <script src="./player.js"></script>
+        <script src="./audio.js"></script>
+        <script src="./texture.js"></script>
+
+        <!-- Geometry classes -->
+        <script src="./resources/human.js"></script>
+        <script src="./resources/human-basic.js"></script>
+        <script src="./resources/camel.js"></script>
+        <script src="./cube.js"></script>
+        <script src="./texturedCross.js"></script>
+        <script src="./particles.js"></script>
+
+        <!-- World and rendering -->
+        <script src="./world.js"></script>
+
+        <!-- Shader source -->
+        <script src="./shaders.js"></script>
+
+        <!-- Main application -->
+        <script src="./main.js"></script>
+    </body>
+</html>
